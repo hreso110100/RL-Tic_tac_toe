@@ -2,13 +2,14 @@ import pygame
 
 from src.game.GameController import GameController
 from src.gui.CommonSurface import CommonSurface
-from src.players.Human import Human
+from src.players.opponents.Human import Human
 
 
 class TrainBoard(CommonSurface):
 
-    def __init__(self, main_surface):
+    def __init__(self, main_surface, board_shape):
         super().__init__(main_surface)
+        self.board_shape = board_shape
         self.game_controller = None
 
     def generate_surface(self, game_controller=None) -> str:
@@ -71,7 +72,13 @@ class TrainBoard(CommonSurface):
 
         pygame.display.flip()
 
+        # running a training
         self.game_controller.game_loop(update_stats=self.update_stats)
+
+        # generating plots
+        game_controller.generate_plot()
+
+        # displaying buttons after training was completed
 
         test_button_text = self.font_small.render("Test performance", False, CommonSurface.WHITE)
         pygame.draw.rect(self.main_surface, CommonSurface.BLUE, (440, 350, 150, 40))
@@ -83,14 +90,15 @@ class TrainBoard(CommonSurface):
 
         return self.current_screen
 
-    def handle_clicks(self, mouse_position, class_to_switch=None) -> str:
+    def handle_clicks(self, mouse_position, class_to_switch) -> str:
 
         # test performance button
         if 590 > mouse_position[0] > 440 and 390 > mouse_position[1] > 350:
 
-            td_learning_bot = self.game_controller.players[0]
+            learner = self.game_controller.players[0]
+            learner.epsilon = 0
 
-            self.game_controller = GameController(players=[td_learning_bot, Human("Human")], shape=3,
+            self.game_controller = GameController(players=[learner, Human("Human")], shape=self.game_controller.shape,
                                                   number_of_games=1)
             self.current_screen = class_to_switch[1].generate_surface(self.game_controller)
 
@@ -137,3 +145,4 @@ class TrainBoard(CommonSurface):
         loss_trainer_value = self.font_medium.render(
             f"{self.game_controller.stats[self.game_controller.players[1]]['loss']}", False, CommonSurface.WHITE)
         self.main_surface.blit(loss_trainer_value, (460, 260))
+

@@ -18,10 +18,9 @@ class Main:
         pygame.display.set_caption("Tic Tac Toe")
         self.clock = pygame.time.Clock()
         self.main_surface = pygame.display.set_mode((WIDTH, HEIGHT))
-
         self.settings_surface = Settings(self.main_surface)
         self.board_surface = Board(self.main_surface)
-        self.train_board_surface = TrainBoard(self.main_surface)
+        self.train_board_surface = TrainBoard(self.main_surface, self.settings_surface.board_shape)
 
         self.current_screen = self.settings_surface.generate_surface()
 
@@ -29,9 +28,12 @@ class Main:
     def pygame_loop(self):
         while self.running:
             mouse_position = pygame.mouse.get_pos()
+            events = pygame.event.get()
 
-            for event in pygame.event.get():
+            if self.current_screen == "SETTINGS":
+                self.settings_surface.handle_typing(events, mouse_position)
 
+            for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and self.current_screen == "SETTINGS":

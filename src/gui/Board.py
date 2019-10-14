@@ -2,14 +2,19 @@ import pygame
 
 from src.gui.CommonSurface import CommonSurface
 
+BOARD_SIZE = 360
+
 
 class Board(CommonSurface):
     current_turn_value = ""
+    rec_size = 0
 
     def __init__(self, main_surface):
         super().__init__(main_surface)
-        self.grid_surface = pygame.Surface((360, 360))
+        self.grid_surface = pygame.Surface((BOARD_SIZE, BOARD_SIZE))
         self.game_controller = None
+        self.circle = None
+        self.cross = None
 
     def generate_surface(self, game_controller=None) -> str:
         self.clear_surface()
@@ -17,6 +22,9 @@ class Board(CommonSurface):
 
         self.current_screen = "BOARD"
         self.game_controller = game_controller
+        self.rec_size = int(BOARD_SIZE / game_controller.shape)
+        self.circle = pygame.transform.scale(self.circle_img, (self.rec_size, self.rec_size))
+        self.cross = pygame.transform.scale(self.cross_img, (self.rec_size, self.rec_size))
 
         algorithm_text = self.font_medium.render("Opponent:", False, CommonSurface.BLUE)
         self.main_surface.blit(algorithm_text, (410, 30))
@@ -24,9 +32,10 @@ class Board(CommonSurface):
                                                   CommonSurface.WHITE)
         self.main_surface.blit(algorithm_value, (410, 70))
 
-        for x in range(0, 3):
-            for y in range(0, 3):
-                pygame.draw.rect(self.grid_surface, CommonSurface.WHITE, [120 * y, 120 * x, 120, 120], 1)
+        for x in range(0, self.game_controller.shape):
+            for y in range(0, self.game_controller.shape):
+                pygame.draw.rect(self.grid_surface, CommonSurface.WHITE,
+                                 [self.rec_size * y, self.rec_size * x, self.rec_size, self.rec_size], 1)
 
         self.main_surface.blit(self.grid_surface, (10, 10))
 
@@ -58,7 +67,7 @@ class Board(CommonSurface):
 
         self.main_surface.blit(winner_text, (410, 150))
 
-    def handle_clicks(self, mouse_position, class_to_switch=None) -> str:
+    def handle_clicks(self, mouse_position, class_to_switch) -> str:
 
         # new game button
         if 560 > mouse_position[0] > 410 and 320 > mouse_position[1] > 290:
@@ -73,12 +82,12 @@ class Board(CommonSurface):
 
     # draw x or o to the given coordinates
     def draw_marker(self, player, row, col):
-        marker = self.game_controller.markers[player.name]
+        marker = self.game_controller.markers[player]
 
         if marker == "X":
             marker = self.cross
         else:
             marker = self.circle
 
-        self.grid_surface.blit(marker, (col * 120, row * 120))
+        self.grid_surface.blit(marker, (col * self.rec_size, row * self.rec_size))
         self.main_surface.blit(self.grid_surface, (10, 10))

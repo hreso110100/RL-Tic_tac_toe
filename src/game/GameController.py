@@ -1,12 +1,19 @@
-import itertools
 import pickle
+import time
+from itertools import chain, cycle, islice
 
-import numpy
+import matplotlib.pyplot as plt
 import pygame
+from numpy import where, full
+
+from src.players.agents.NeuralNetworkBot import NeuralNetworkBot
+from src.players.agents.TDBot import TDBot
 
 
 # Main logic of tic tac toe game
 class GameController:
+    sum_reward = 0
+    reward_list = []
 
     def __init__(self, players, shape, number_of_games):
         self.players = players
@@ -15,42 +22,53 @@ class GameController:
         self.running = True
         self.winner = ""
         self.episode = 0
-        self.player_iterator = itertools.cycle(self.players)
-        self.current_player = next(self.player_iterator)
-        self.markers = {players[0].name: "X", players[1].name: "O"}
-        self.grid = numpy.full((shape, shape), '-', dtype=str)
+        self.current_player = None
+        self.player_switcher = None
+        self.starting_player_index = 0
+        self.markers = {players[0]: "X", players[1]: "O"}
+        self.board = full((shape, shape), '-', dtype=str)
         self.stats = {player: {'win': 0, 'loss': 0, 'draw': 0} for player in players}
 
     # reset game properties
     def restart_game(self):
-        self.grid = numpy.full((self.shape, self.shape), '-', dtype=str)
+        self.board = full((self.shape, self.shape), '-', dtype=str)
         self.running = True
+        self.player_switcher = islice(cycle(self.players), self.starting_player_index, None)
+        self.starting_player_index = 1 - self.starting_player_index
+        self.current_player = next(self.player_switcher)
         self.winner = ""
 
-    # returns list of possible moves on the grid
+    # returns list of possible moves on the board
     def possible_moves(self) -> list:
-        row, col = numpy.where(self.grid == '-')
+        row, col = where(self.board == '-')
 
         return list(zip(row, col))
 
     # check if game is over, returns winner's name or "DRAW" in case of draw
-    def check_grid(self) -> str:
+    def check_board(self) -> str:
+        diagonal = ""
+        anti_diagonal = ""
+        anti_diagonal_counter = self.shape - 1
 
-        # diagonal and anti-diagonal check
-        diagonal = self.grid[0][0] + self.grid[1][1] + self.grid[2][2]
-        anti_diagonal = self.grid[2][0] + self.grid[1][1] + self.grid[0][2]
+        for i in range(0, self.shape):
+            diagonal += self.board[i][i]
+            anti_diagonal += self.board[i][anti_diagonal_counter]
+            anti_diagonal_counter -= 1
 
-        if (diagonal == "XXX" or diagonal == "OOO") or (anti_diagonal == "XXX" or anti_diagonal == "OOO"):
+        if (diagonal == (self.shape * "X") or diagonal == (self.shape * "O")) \
+                or (anti_diagonal == (self.shape * "X") or anti_diagonal == (self.shape * "O")):
             return self.current_player.name
 
         # x and y axis checking
-        for row in range(0, 3):
+        for row in range(0, self.shape):
             x_axis = ""
             y_axis = ""
-            for col in range(0, 3):
-                x_axis += self.grid[row][col]
-                y_axis += self.grid[col][row]
-            if (x_axis == "OOO" or x_axis == "XXX") or (y_axis == "OOO" or y_axis == "XXX"):
+            for col in range(0, self.shape):
+                x_axis += self.board[row][col]
+                y_axis += self.board[col][row]
+
+            if (x_axis == (self.shape * "O") or x_axis == (self.shape * "X")) \
+                    or (y_axis == (self.shape * "O") or y_axis == (self.shape * "X")):
                 return self.current_player.name
 
         if len(self.possible_moves()) == 0:
@@ -58,33 +76,33 @@ class GameController:
 
         return ""
 
-    # allows players to mark grid
-    def make_move(self, move, update_grid=None):
+    # allows players to mark board
+    def make_move(self, move, update_board=None):
         row, col = move
 
-        self.grid[row][col] = self.markers[self.current_player.name]
+        self.board[row][col] = self.markers[self.current_player]
 
-        if update_grid is not None:
-            update_grid(self.current_player, row, col)
+        if update_board is not None:
+            update_board(self.current_player, row, col)
 
     # simulate state after move, needed for exploitation
-    def simulate_next_grid(self, move):
+    def simulate_next_board(self, move):
         row, col = move
 
-        grid_copy = self.grid.copy()
+        board_copy = self.board.copy()
 
-        grid_copy[row][col] = self.markers[self.current_player.name]
+        board_copy[row][col] = self.markers[self.current_player]
 
-        return grid_copy
+        return board_copy
 
-    # generating string key from grid layout
+    # generating string key from board and next state in case of Q-function
     @staticmethod
-    def generate_state_key(grid) -> str:
+    def generate_board_key(board) -> str:
 
-        return "".join(itertools.chain(*grid.tolist()))
+        return "".join(chain(*board.tolist()))
 
     # distributes rewards between players
-    def distribute_rewards(self) -> float:
+    def distribute_rewards(self):
         if self.winner == "DRAW":
             for player in self.players:
                 player.reward = 0.5
@@ -112,38 +130,115 @@ class GameController:
         else:
             self.stats[self.players[0]]['loss'] += 1
             self.stats[self.players[1]]['win'] += 1
+        self.sum_reward += self.players[0].reward
+        self.reward_list.append(self.sum_reward)
+
+    # generating plots
+    def generate_plot(self):
+        fig, ax = plt.subplots()
+        ax.plot(self.reward_list, 'r', label=f"{self.players[0].name}")
+        ax.set(xlabel="epizóda", ylabel="celková odmena", title="Celková odmena počas epizódy")
+        ax.grid()
+        plt.legend(loc='upper left')
+        plt.draw()
+        fig.savefig(f'../graphs/{self.players[0].name}.png', dpi=1200)
+
+    # update agent's estimates and counts stats
+    def finalize(self, s, s_, update_stats):
+        if type(self.players[0]) is NeuralNetworkBot:
+            self.players[0].store_experience(
+                [s, self.players[0].action, s_, self.players[0].reward, self.winner])
+
+            if len(self.players[0].memory) >= self.players[0].min_batch_size:
+                self.players[0].update(self)
+                self.players[0].update_epsilon()
+        else:
+            self.players[0].update(s, s_, self)
+        self.running = False
+        self.episode += 1
+        self.count_stats()
+        if update_stats is not None:
+            update_stats()
+
+    # game loop for td(0)
+    def td_game_loop(self, update_board, update_stats):
+        to_estimate = self.generate_board_key(self.board)
+        self.make_move(self.current_player.mark(self), update_board)
+        after_action = self.generate_board_key(self.board)
+
+        self.winner = self.check_board()
+        self.distribute_rewards()
+
+        for player in self.players:
+            player.update(to_estimate, after_action, self)
+
+        self.current_player = next(self.player_switcher)
+
+        if self.winner != "":
+            self.running = False
+            self.episode += 1
+            self.count_stats()
+
+            if update_stats is not None:
+                update_stats()
+        pygame.display.flip()
 
     # main game loop
-    def game_loop(self, update_grid=None, update_stats=None):
+    def game_loop(self, update_board=None, update_stats=None):
+        start_time = time.time()
 
-        while self.episode < self.number_of_games:
-            self.restart_game()
+        # just in case learner is TD(0)
+        if type(self.players[0]) is TDBot:
+            while self.episode < self.number_of_games:
+                self.restart_game()
 
-            while self.running:
-                state_to_estimate = self.generate_state_key(self.grid)
+                while self.running:
+                    self.td_game_loop(update_board, update_stats)
 
-                self.make_move(self.current_player.mark_grid(self), update_grid)
+        # others game loop
+        else:
+            while self.episode < self.number_of_games:
+                print(f"Episode: {self.episode}")
+                self.restart_game()
 
-                state_after_action = self.generate_state_key(self.grid)
+                if self.players[1].name == self.current_player.name:
+                    self.make_move(self.current_player.mark(self), update_board)
+                    self.current_player = next(self.player_switcher)
+                    pygame.display.flip()
 
-                self.winner = self.check_grid()
-                self.distribute_rewards()
+                while self.running:
+                    s = self.generate_board_key(self.board)
+                    self.make_move(self.current_player.mark(self), update_board)
+                    s_ = self.generate_board_key(self.board)
+                    self.winner = self.check_board()
+                    self.distribute_rewards()
 
-                for player in self.players:
-                    player.update_state_value(state_to_estimate, state_after_action)
+                    if self.winner == "":
+                        self.current_player = next(self.player_switcher)
+                        pygame.display.flip()
+                        self.make_move(self.current_player.mark(self), update_board)
+                        s_ = self.generate_board_key(self.board)
+                        self.winner = self.check_board()
+                        self.distribute_rewards()
 
-                self.current_player = next(self.player_iterator)
-
-                if self.winner != "":
-                    self.running = False
-                    self.episode += 1
-                    self.count_stats()
-
-                    if update_stats is not None:
-                        update_stats()
+                        if self.winner == "":
+                            if type(self.players[0]) is NeuralNetworkBot:
+                                self.players[0].store_experience(
+                                    [s, self.players[0].action, s_, self.players[0].reward, self.winner])
+                            else:
+                                self.players[0].update(s, s_, self)
+                            self.current_player = next(self.player_switcher)
+                            pygame.display.flip()
+                        else:
+                            self.finalize(s, s_, update_stats)
+                    else:
+                        self.finalize(s, s_, update_stats)
 
                 pygame.display.flip()
 
-        # saving value function after each training sequence
-        with open('../trained_bots/td-learning.pkl', 'wb') as file:
+        print("###############\n" + "Training duration: " + str(
+            round(time.time() - start_time, 2)) + " seconds. \n###############")
+
+        # saving objects after each training sequence
+        with open(f'../trained_bots/{self.players[0].name}.pkl', 'wb') as file:
             pickle.dump(self.players[0], file)

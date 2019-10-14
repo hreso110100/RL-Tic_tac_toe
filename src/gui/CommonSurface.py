@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
 import pygame
+from pygame.surface import Surface
 
 
 class CommonSurface(metaclass=ABCMeta):
@@ -11,7 +12,7 @@ class CommonSurface(metaclass=ABCMeta):
     BLUE = (0, 145, 234)
     RED = (255, 0, 0)
 
-    def __init__(self, main_surface):
+    def __init__(self, main_surface: Surface):
         self.main_surface = main_surface
         self.main_surface.fill(self.GREY)
 
@@ -25,15 +26,13 @@ class CommonSurface(metaclass=ABCMeta):
         # assets
         self.circle_img = pygame.image.load('../assets/circle.png')
         self.cross_img = pygame.image.load('../assets/cross.png')
-        self.circle = pygame.transform.scale(self.circle_img, (120, 120))
-        self.cross = pygame.transform.scale(self.cross_img, (120, 120))
 
     @abstractmethod
-    def generate_surface(self, game_controller=None) -> str:
+    def generate_surface(self, *args) -> str:
         pass
 
     @abstractmethod
-    def handle_clicks(self, mouse_position, class_to_switch=None) -> str:
+    def handle_clicks(self, mouse_position: tuple, class_to_switch) -> str:
         pass
 
     def clear_surface(self):
